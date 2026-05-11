@@ -45,24 +45,24 @@ else:
 
 
 # 5. DESENHO DO MAPA VISUAL
-st.subheader("Visualização Espacial")
+st.subheader("🗺️ Visualização Espacial")
 
-# Cria duas abas separadas na tela
-aba1, aba2 = st.tabs(["📍 Mapa de Posição (Arraste os Sliders)", "🌡️ Mapa de Calor Interpolado"])
+# Trocamos as "tabs" por "radio" para evitar o bug de mapas em elementos ocultos
+tipo_mapa = st.radio("Escolha a visualização:", ["📍 Mapa de Posição (Sliders)", "🌡️ Mapa de Calor Interpolado"])
 
-# --- ABA 1: MAPA DO USUÁRIO ---
-with aba1:
-    st.write("Aqui você vê a sua posição exata no campus baseada nos sliders.")
+if tipo_mapa == "📍 Mapa de Posição (Sliders)":
+    st.write("Aqui você vê a sua posição exata baseada nos sliders.")
     mapa_posicao = folium.Map(location=[-22.7694, -43.6875], zoom_start=18)
     
     # Marca os 4 sensores com pontinhos vermelhos
     for index, linha in df_sensores.iterrows():
         folium.CircleMarker(
             location=[linha['latitude'], linha['longitude']],
-            radius=5, color="red", fill=True, tooltip=f"Sensor {linha['sensor_id']}: {linha['temperatura']}°C"
+            radius=6, color="red", fill=True, 
+            tooltip=f"Sensor {linha['sensor_id']}: {linha['temperatura']}°C"
         ).add_to(mapa_posicao)
 
-    # Marca o usuário se ele estiver no polígono
+    # Marca o usuário se ele estiver dentro da área
     if poligono_geo.contains(ponto_usuario):
         folium.Marker(
             location=[lat_usuario, lon_usuario],
@@ -70,46 +70,45 @@ with aba1:
             icon=folium.Icon(color="blue", icon="user"),
         ).add_to(mapa_posicao)
 
-    
-    st_folium(mapa_posicao, height=400, use_container_width=True)
+    # A 'key' única é essencial para o Streamlit não confundir os mapas
+    st_folium(mapa_posicao, height=400, use_container_width=True, key="mapa_pos")
 
-# ABA 2: O MAPA DE CALOR (INTERPOLADO)
-with aba2:
-    st.write("Superfície contínua de temperatura calculada pelo SciPy.")
+else:
+    st.write("Superfície contínua de temperatura calculada pelo modelo matemático.")
     mapa_calor = folium.Map(location=[-22.7694, -43.6875], zoom_start=18)
 
-    # 1. Pegamos os limites da nossa área
+    # Limites do prédio de geociências
     min_lon, max_lon = -43.6882, -43.6868
     min_lat, max_lat = -22.7700, -22.7688
 
-    # 2. NumPy cria uma rede (grid) de 50x50 pontos invisíveis cobrindo a área
+    # Criação da malha com 2500 pontos invisíveis (50x50)
     grade_lon, grade_lat = np.meshgrid(
         np.linspace(min_lon, max_lon, 50),
         np.linspace(min_lat, max_lat, 50)
     )
     
-    # Achata a grade para o formato que o SciPy gosta
     lon_achapada = grade_lon.flatten()
     lat_achapada = grade_lat.flatten()
-
-    # 3. O SciPy calcula a temperatura de TODOS esses 2500 pontos invisíveis de uma vez!
     temp_achapada = funcao_calor(lon_achapada, lat_achapada)
 
-    # 4. Filtramos só os pontos que caem dentro do terreno e preparamos pro Folium
+    # Filtra os pontos que estão dentro do terreno e converte pro formato seguro
     dados_grade = []
     for ln, lt, tp in zip(lon_achapada, lat_achapada, temp_achapada):
-        if poligono_geo.contains(Point(ln, lt)):
-            dados_grade.append([lt, ln, tp]) # Folium usa Lat, Lon
+        if poligono_geo.contains(Point(float(ln), float(lt))):
+            # O truque de mestre: float() limpa a formatação NumPy que quebra o mapa
+            dados_grade.append([float(lt), float(ln), float(tp)]) 
 
-    #Mapa de calor
+    # Aplica o HeatMap denso
     from folium.plugins import HeatMap
-    HeatMap(dados_grade, radius=15, blur=10, min_opacity=0.4).add_to(mapa_calor)
+    HeatMap(dados_grade, radius=18, blur=12, min_opacity=0.4).add_to(mapa_calor)
 
-    # Marca os 4 sensores originais por cima da mancha
+    # Marca onde estão os sensores reais por cima do calor para referência
     for index, linha in df_sensores.iterrows():
         folium.Marker(
             location=[linha['latitude'], linha['longitude']],
             icon=folium.Icon(color="black", icon="info-sign"),
+            tooltip=f"Sensor {linha['sensor_id']} (Real)"
         ).add_to(mapa_calor)
 
-    st_folium(mapa_calor, height=400, use_container_width=True)
+    # Outra 'key' única
+    st_folium(mapa_calor, height=400, use_container_width=True, key="mapa_calor")
