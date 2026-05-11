@@ -165,7 +165,7 @@ def main():
         ).add_to(mapa_base)
 
     # 2. Desenha a superfície de calor se ativada
-    if tipo_mapa == "🌡️ Superfície Interpolada (Isolinhas)":
+    if tipo_mapa == "Mapa de Calor":
         limites_terreno = (-43.6882, -43.6868, -22.7700, -22.7688)
         camada_imagem = gerar_camada_isolinhas(df_sensores, limites_terreno)
 
