@@ -7,7 +7,7 @@ import base64
 import io
 import logging
 from typing import Tuple
-
+import os
 import folium
 import matplotlib.pyplot as plt
 import numpy as np
@@ -116,7 +116,14 @@ def main():
     # st.image("logo.png", width=150)
     
     st.title("🌡️ Monitoramento Microclimático")
-    st.image("LIGA.png", width=150)
+    # 1. Descobre o caminho absoluto da pasta onde este código (app.py) está rodando
+    pasta_atual = os.path.dirname(os.path.abspath(__file__))
+    
+    # 2. Junta o caminho da pasta com o nome exato do arquivo
+    caminho_imagem = os.path.join(pasta_atual, "LIGA.png")
+    
+    # 3. Exibe a imagem usando o caminho completo e seguro
+    st.image(caminho_imagem, width=150)
     st.markdown("Dashboard de interpolação térmica em tempo real do Prédio de Geociências.")
     
     df_sensores = obter_dados_sensores()
