@@ -142,8 +142,6 @@ def main():
         st.metric(
             label="Temperatura na sua posição exata", 
             value=f"{temp_local_exata:.2f} °C",
-            delta="Atualizado ao vivo via IDW",
-            delta_color="off"
         )
     st.markdown("---")
 
