@@ -155,5 +155,11 @@ else:
             icon=folium.Icon(color="black", icon="info-sign"),
             tooltip=f"Sensor {linha['sensor_id']} (Real)"
         ).add_to(mapa_calor)
-
+   # Marca o usuário no mapa de calor se ele estiver na área permitida
+    if poligono_geo.contains(ponto_usuario):
+        folium.Marker(
+            location=[lat_usuario, lon_usuario],
+            popup=f"Sua Posição\nTemp Estimada: {temp_estimada:.1f}°C",
+            icon=folium.Icon(color="blue", icon="user"),
+        ).add_to(mapa_calor)
     st_folium(mapa_calor, height=400, use_container_width=True, key="mapa_cientifico")
