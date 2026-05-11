@@ -121,7 +121,7 @@ def main():
         """
     st.markdown(esconder_menu, unsafe_allow_html=True)
     
-    st.title("🌡️ Monitoramento Microclimático")
+    st.title("Monitoramento Microclimático")
     pasta_atual = os.path.dirname(os.path.abspath(__file__))
     caminho_imagem = os.path.join(pasta_atual, "LIGA.png")
     col_esq, col_meio, col_dir = st.columns([1, 1, 1])
