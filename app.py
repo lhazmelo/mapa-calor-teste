@@ -1,6 +1,6 @@
 """
 Sistema de Monitoramento e Interpolação Climática - UFRRJ (Geociências)
-Desenvolvido com Streamlit, GeoPandas, SciPy e Folium.
+Desenvolvido com Streamlit, GeoPandas, NumPy e Folium.
 """
 
 import base64
@@ -14,7 +14,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from folium import raster_layers
-from scipy.interpolate import Rbf
 from shapely.geometry import Point, Polygon
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -61,31 +60,42 @@ def obter_dados_sensores() -> pd.DataFrame:
         st.error("Serviço temporariamente indisponível. Falha na conexão com o banco de dados.")
         return pd.DataFrame()
 
-def calcular_interpolacao_rbf(df: pd.DataFrame, fun_type: str = 'thin_plate') -> Rbf:
+def estimar_temp_idw(lon_alvo: float, lat_alvo: float, df: pd.DataFrame, power: int = 2) -> float:
     """
-    Gera o modelo matemático de interpolação espacial com base nos sensores.
-    Usa 'thin_plate' (Spline de Placa Fina) para evitar distorções térmicas (Overshoot).
+    Algoritmo IDW: Estima a temperatura pontual usando o Inverso do Quadrado da Distância.
     """
-    return Rbf(
-        df['longitude'].values, 
-        df['latitude'].values, 
-        df['temperatura'].values, 
-        function=fun_type
-    )
-def gerar_camada_isolinhas(modelo_rbf: Rbf, limites: Tuple[float, float, float, float]) -> str:
+    lons = df['longitude'].values
+    lats = df['latitude'].values
+    temps = df['temperatura'].values
+    
+    # Distância Euclidiana e prevenção de divisão por zero
+    distancias = np.sqrt((lons - lon_alvo)**2 + (lats - lat_alvo)**2)
+    distancias = np.where(distancias < 1e-10, 1e-10, distancias) 
+    
+    pesos = 1.0 / (distancias ** power)
+    return float(np.sum(pesos * temps) / np.sum(pesos))
+
+def gerar_camada_isolinhas(df: pd.DataFrame, limites: Tuple[float, float, float, float]) -> str:
     """
-    Gera a sobreposição de contornos (isopletas) via Matplotlib e converte para Base64.
+    Algoritmo IDW Vetorizado: Calcula a malha inteira e gera o mapa via Matplotlib.
     """
     min_lon, max_lon, min_lat, max_lat = limites
 
-    # Geração da malha espacial
     grade_lon, grade_lat = np.meshgrid(
         np.linspace(min_lon, max_lon, RESOLUCAO_MALHA),
         np.linspace(min_lat, max_lat, RESOLUCAO_MALHA)
     )
     
-    # Aplicação do modelo preditivo
-    temp_matriz = modelo_rbf(grade_lon.flatten(), grade_lat.flatten()).reshape(RESOLUCAO_MALHA, RESOLUCAO_MALHA)
+    lons = df['longitude'].values
+    lats = df['latitude'].values
+    temps = df['temperatura'].values
+    
+    # Álgebra Linear para calcular a distância de 10.000 pontos instantaneamente
+    distancias = np.sqrt((lons[:, None, None] - grade_lon)**2 + (lats[:, None, None] - grade_lat)**2)
+    distancias = np.where(distancias < 1e-10, 1e-10, distancias)
+    pesos = 1.0 / (distancias ** 2)
+    
+    temp_matriz = np.sum(pesos * temps[:, None, None], axis=0) / np.sum(pesos, axis=0)
 
     # Renderização científica
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -99,7 +109,6 @@ def gerar_camada_isolinhas(modelo_rbf: Rbf, limites: Tuple[float, float, float, 
     plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
     plt.margins(0, 0)
 
-    # Processamento em memória
     img_buffer = io.BytesIO()
     plt.savefig(img_buffer, format='png', bbox_inches='tight', pad_inches=0, transparent=True)
     img_buffer.seek(0)
@@ -120,7 +129,6 @@ def main():
     if df_sensores.empty:
         st.stop()
 
-    # Layout em colunas para os controles
     col_controle, col_mapa = st.columns([1, 3])
 
     with col_controle:
@@ -138,10 +146,9 @@ def main():
 
         st.markdown("---")
         
-        # Processamento e Validação da Cerca Virtual
         if POLIGONO_GEOCIENCIAS.contains(ponto_usuario):
-            modelo_rbf = calcular_interpolacao_rbf(df_sensores)
-            temp_estimada = float(modelo_rbf(lon_usuario, lat_usuario))
+            # Chamada da nova função de IDW
+            temp_estimada = estimar_temp_idw(lon_usuario, lat_usuario, df_sensores)
             
             st.success("✅ Coordenada válida (Área Interna)")
             st.metric(label="Temperatura Estimada", value=f"{temp_estimada:.2f} °C")
@@ -150,10 +157,8 @@ def main():
             st.error("❌ Fora da área de cobertura do projeto.")
 
     with col_mapa:
-        # 1. Cria o mapa base uma única vez
         mapa_base = folium.Map(location=MAPA_CENTRO, zoom_start=ZOOM_INICIAL)
 
-        # 2. Adiciona os sensores de referência (Sempre visíveis em ambos os mapas)
         for _, linha in df_sensores.iterrows():
             folium.CircleMarker(
                 location=[linha['latitude'], linha['longitude']],
@@ -161,14 +166,13 @@ def main():
                 tooltip=f"Sensor {linha['sensor_id']} | {linha['temperatura']}°C"
             ).add_to(mapa_base)
 
-        # 3. Adiciona a camada científica apenas se a opção estiver selecionada
         if tipo_mapa == "🌡️ Superfície Interpolada (Isolinhas)":
             min_lon, max_lon = -43.6882, -43.6868
             min_lat, max_lat = -22.7700, -22.7688
             limites_terreno = (min_lon, max_lon, min_lat, max_lat)
 
-            modelo_rbf = calcular_interpolacao_rbf(df_sensores, fun_type='cubic')
-            camada_imagem = gerar_camada_isolinhas(modelo_rbf, limites_terreno)
+            # Nova rotina vetorizada que nunca falha matematicamente
+            camada_imagem = gerar_camada_isolinhas(df_sensores, limites_terreno)
 
             raster_layers.ImageOverlay(
                 image=camada_imagem,
@@ -179,7 +183,6 @@ def main():
                 zindex=1
             ).add_to(mapa_base)
 
-        # 4. Adiciona o marcador do usuário por cima de tudo (Sempre visível se estiver na área)
         if temp_estimada is not None:
             folium.Marker(
                 location=[lat_usuario, lon_usuario],
@@ -187,13 +190,12 @@ def main():
                 icon=folium.Icon(color="blue", icon="info-sign"),
             ).add_to(mapa_base)
 
-        # 5. Renderiza usando otimização de performance do Streamlit-Folium
         st_folium(
             mapa_base, 
             height=500, 
             use_container_width=True, 
-            returned_objects=[], # Impede lentidão ou recarregamentos ao arrastar o mapa
-            key=f"render_{tipo_mapa}" # Força a tela a atualizar perfeitamente ao trocar o botão radio
+            returned_objects=[], 
+            key=f"render_{tipo_mapa}"
         )
 
 if __name__ == "__main__":
