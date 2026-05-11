@@ -6,7 +6,7 @@ from scipy.interpolate import Rbf
 import folium
 from streamlit_folium import st_folium
 from folium.plugins import HeatMap
-import numpy
+import numpy as np
 
 st.title("Mapa de Calor Geociências")
 
