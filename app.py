@@ -112,8 +112,15 @@ def gerar_camada_isolinhas(df: pd.DataFrame, limites: Tuple[float, float, float,
 # INTERFACE PRINCIPAL (DASHBOARD)
 # ==========================================
 def main():
-    # Para usar uma imagem, suba um arquivo 'logo.png' no GitHub e descomente a linha abaixo:
-    # st.image("logo.png", width=150)
+    esconder_menu = """
+        <style>
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        [data-testid="stToolbar"] {visibility: hidden;}
+        </style>
+        """
+    st.markdown(esconder_menu, unsafe_allow_html=True)
     
     st.title("🌡️ Monitoramento Microclimático")
     pasta_atual = os.path.dirname(os.path.abspath(__file__))
