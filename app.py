@@ -7,6 +7,9 @@ import folium
 from streamlit_folium import st_folium
 from folium.plugins import HeatMap
 import numpy as np
+import matplotlib.pyplot as plt
+import io
+import base64
 
 st.title("Mapa de Calor Geociências")
 
@@ -91,18 +94,61 @@ else:
     lat_achapada = grade_lat.flatten()
     temp_achapada = funcao_calor(lon_achapada, lat_achapada)
 
-    # Filtra os pontos que estão dentro do terreno e converte pro formato seguro
-    dados_grade = []
-    for ln, lt, tp in zip(lon_achapada, lat_achapada, temp_achapada):
-        if poligono_geo.contains(Point(float(ln), float(lt))):
-            # O truque de mestre: float() limpa a formatação NumPy que quebra o mapa
-            dados_grade.append([float(lt), float(ln), float(tp)]) 
+    # 1. Cria uma tela de desenho (canvas) sem bordas e transparente
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.axis('off') 
+    fig.patch.set_alpha(0.0) 
+    ax.patch.set_alpha(0.0)
 
-    # Aplica o HeatMap denso
-    from folium.plugins import HeatMap
-    HeatMap(dados_grade, radius=18, blur=12, min_opacity=0.4).add_to(mapa_calor)
+    # 2. Transforma o vetor de temperatura de volta numa matriz 2D
+    # (O Matplotlib exige matrizes para desenhar curvas de nível)
+    temp_matriz = temp_achapada.reshape(100, 100)
 
-    # Marca onde estão os sensores reais por cima do calor para referência
+    # 3. Desenha as faixas de temperatura preenchidas (contourf)
+    # 'coolwarm' vai do azul (frio) pro vermelho (quente). 'levels=15' cria 15 faixas.
+    contorno_cores = ax.contourf(
+        grade_lon, grade_lat, temp_matriz, 
+        levels=15, cmap='coolwarm', alpha=0.5
+    )
+
+    # 4. Desenha as linhas de contorno rígidas (As curvas de nível)
+    ax.contour(
+        grade_lon, grade_lat, temp_matriz, 
+        levels=15, colors='black', linewidths=0.5, alpha=0.5
+    )
+
+    # 5. Remove qualquer margem branca da imagem gerada
+    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+    plt.margins(0, 0)
+
+    # 6. Salva a imagem na memória RAM do servidor (sem criar arquivo)
+    img_buffer = io.BytesIO()
+    plt.savefig(img_buffer, format='png', bbox_inches='tight', pad_inches=0, transparent=True)
+    img_buffer.seek(0)
+    
+    # Codifica a imagem para que o navegador de internet consiga ler
+    img_base64 = base64.b64encode(img_buffer.read()).decode('utf-8')
+    img_url = f"data:image/png;base64,{img_base64}"
+    plt.close(fig) # Libera a memória do servidor
+
+    # ==========================================
+    # SOBREPOSIÇÃO NO FOLIUM
+    # ==========================================
+    from folium import raster_layers
+
+    # Define os limites perfeitos onde a imagem será colada no mapa
+    limites_imagem = [[min_lat, min_lon], [max_lat, max_lon]]
+
+    raster_layers.ImageOverlay(
+        image=img_url,
+        bounds=limites_imagem,
+        opacity=0.7,
+        interactive=False,
+        cross_origin=False,
+        zindex=1
+    ).add_to(mapa_calor)
+
+    # Marca os 4 sensores reais por cima do mapa científico para referência
     for index, linha in df_sensores.iterrows():
         folium.Marker(
             location=[linha['latitude'], linha['longitude']],
@@ -110,5 +156,4 @@ else:
             tooltip=f"Sensor {linha['sensor_id']} (Real)"
         ).add_to(mapa_calor)
 
-    # Outra 'key' única
-    st_folium(mapa_calor, height=400, use_container_width=True, key="mapa_calor")
+    st_folium(mapa_calor, height=400, use_container_width=True, key="mapa_cientifico")
