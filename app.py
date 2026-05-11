@@ -23,6 +23,11 @@ from streamlit_folium import st_folium
 # CONFIGURAÇÕES E CONSTANTES
 # ==========================================
 st.set_page_config(page_title="Monitoramento Geociências", layout="wide")
+st.set_page_config(
+    page_title="Monitoramento Geociências", 
+    page_icon="🌍", # Pode ser um emoji ou um link de imagem!
+    layout="wide"
+)
 
 # Delimitação do Prédio de Geociências (UFRRJ)
 COORDENADAS_CAMPUS = [
@@ -121,7 +126,12 @@ def gerar_camada_isolinhas(df: pd.DataFrame, limites: Tuple[float, float, float,
 # INTERFACE PRINCIPAL (MAIN)
 # ==========================================
 def main():
-    st.title("Mapa de Calor - Monitoramento Microclimático")
+    # Podemos adicionar um logo da universidade aqui em cima
+    # st.image("https://link-da-imagem-do-logo.png", width=200)
+
+    st.title("🌡️ Monitoramento Microclimático")
+    st.image("https://upload.wikimedia.org/wikipedia/commons/4/4b/Logo_UFRRJ.png", width=150)
+    st.markdown("Dashboard de interpolação térmica em tempo real do Prédio de Geociências.")
     st.markdown("---")
 
     df_sensores = obter_dados_sensores()
@@ -129,74 +139,49 @@ def main():
     if df_sensores.empty:
         st.stop()
 
-    col_controle, col_mapa = st.columns([1, 3])
+    # Botão de seleção centralizado no topo
+    tipo_mapa = st.radio(
+        "Selecione a Camada de Visualização:", 
+        ["📍 Sensores Base", "🌡️ Superfície Interpolada (Isolinhas)"],
+        horizontal=True # Deixa os botões lado a lado
+    )
 
-    with col_controle:
-        st.subheader("Simulador de Posicionamento")
-        st.markdown("Ajuste as coordenadas para estimar a temperatura local.")
-        
-        lon_usuario = st.slider("Longitude", -43.6890, -43.6860, -43.6875, format="%.5f")
-        lat_usuario = st.slider("Latitude", -22.7710, -22.7680, -22.7694, format="%.5f")
-        ponto_usuario = Point(lon_usuario, lat_usuario)
+    # Cria o mapa base
+    mapa_base = folium.Map(location=MAPA_CENTRO, zoom_start=ZOOM_INICIAL)
 
-        tipo_mapa = st.radio(
-            "Camada de Visualização:", 
-            ["📍 Sensores e Posição Atual", "🌡️ Superfície Interpolada (Isolinhas)"]
-        )
+    # Adiciona os sensores de referência (Sempre visíveis)
+    for _, linha in df_sensores.iterrows():
+        folium.CircleMarker(
+            location=[linha['latitude'], linha['longitude']],
+            radius=6, color="#333333", fill=True, fill_color="#ff4444", fill_opacity=1,
+            tooltip=f"Sensor {linha['sensor_id']} | {linha['temperatura']}°C"
+        ).add_to(mapa_base)
 
-        st.markdown("---")
-        
-        if POLIGONO_GEOCIENCIAS.contains(ponto_usuario):
-            # Chamada da nova função de IDW
-            temp_estimada = estimar_temp_idw(lon_usuario, lat_usuario, df_sensores)
-            
-            st.success("✅ Coordenada válida (Área Interna)")
-            st.metric(label="Temperatura Estimada", value=f"{temp_estimada:.2f} °C")
-        else:
-            temp_estimada = None
-            st.error("❌ Fora da área de cobertura do projeto.")
+    # Adiciona a camada científica se selecionada
+    if tipo_mapa == "🌡️ Superfície Interpolada (Isolinhas)":
+        min_lon, max_lon = -43.6882, -43.6868
+        min_lat, max_lat = -22.7700, -22.7688
+        limites_terreno = (min_lon, max_lon, min_lat, max_lat)
 
-    with col_mapa:
-        mapa_base = folium.Map(location=MAPA_CENTRO, zoom_start=ZOOM_INICIAL)
+        camada_imagem = gerar_camada_isolinhas(df_sensores, limites_terreno)
 
-        for _, linha in df_sensores.iterrows():
-            folium.CircleMarker(
-                location=[linha['latitude'], linha['longitude']],
-                radius=6, color="#333333", fill=True, fill_color="#ff4444", fill_opacity=1,
-                tooltip=f"Sensor {linha['sensor_id']} | {linha['temperatura']}°C"
-            ).add_to(mapa_base)
+        raster_layers.ImageOverlay(
+            image=camada_imagem,
+            bounds=[[min_lat, min_lon], [max_lat, max_lon]],
+            opacity=0.6,
+            interactive=False,
+            cross_origin=False,
+            zindex=1
+        ).add_to(mapa_base)
 
-        if tipo_mapa == "🌡️ Superfície Interpolada (Isolinhas)":
-            min_lon, max_lon = -43.6882, -43.6868
-            min_lat, max_lat = -22.7700, -22.7688
-            limites_terreno = (min_lon, max_lon, min_lat, max_lat)
-
-            # Nova rotina vetorizada que nunca falha matematicamente
-            camada_imagem = gerar_camada_isolinhas(df_sensores, limites_terreno)
-
-            raster_layers.ImageOverlay(
-                image=camada_imagem,
-                bounds=[[min_lat, min_lon], [max_lat, max_lon]],
-                opacity=0.6,
-                interactive=False,
-                cross_origin=False,
-                zindex=1
-            ).add_to(mapa_base)
-
-        if temp_estimada is not None:
-            folium.Marker(
-                location=[lat_usuario, lon_usuario],
-                popup=folium.Popup(f"<b>Temperatura:</b> {temp_estimada:.1f}°C", max_width=200),
-                icon=folium.Icon(color="blue", icon="info-sign"),
-            ).add_to(mapa_base)
-
-        st_folium(
-            mapa_base, 
-            height=500, 
-            use_container_width=True, 
-            returned_objects=[], 
-            key=f"render_{tipo_mapa}"
-        )
+    # Renderiza o mapa grandão ocupando a tela
+    st_folium(
+        mapa_base, 
+        height=600, 
+        use_container_width=True, 
+        returned_objects=[], 
+        key=f"render_{tipo_mapa}"
+    )
 
 if __name__ == "__main__":
     main()
