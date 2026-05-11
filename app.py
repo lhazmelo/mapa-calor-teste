@@ -121,7 +121,6 @@ def main():
         .viewerBadge_container {display: none !important;}
         .viewerBadge_link {display: none !important;}
         </style>
-        </style>
         """
     st.markdown(esconder_menu, unsafe_allow_html=True)
     
