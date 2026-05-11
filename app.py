@@ -117,19 +117,21 @@ def main():
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         header {visibility: hidden;}
-        [data-testid="stToolbar"] {visibility: hidden;}
         
-        /* Esconde a caixa flutuante do criador (foto e link) */
-        div[data-testid="stStatusWidget"] {visibility: hidden;}
+        /* Alvos específicos do Viewer Badge em 2026 */
+        div[data-testid="stStatusWidget"] {display: none !important;}
+        .stApp [data-testid="stToolbar"] {display: none !important;}
+        
+        /* Remove o badge flutuante de perfil */
+        iframe[title="Manage app"] {display: none !important;}
         .viewerBadge_container__1QSob {display: none !important;}
-        .viewerBadge_link__1QSob {display: none !important;}
         
-        /* Remove qualquer link de marca d'água residual no final da página */
-        a {pointer-events: none; cursor: default; text-decoration: none; color: inherit;}
-        a[href*="streamlit.io"] {display: none !important;}
-        
-        /* Ajuste de margem para o mapa não ficar colado no topo agora que o menu sumiu */
-        .block-container {padding-top: 2rem !important;}
+        /* Impede que qualquer coisa apareça no canto inferior direito */
+        [data-testid="stStatusWidget"] {
+            visibility: hidden;
+            height: 0%;
+            position: fixed;
+        }
         </style>
         """
     st.markdown(esconder_menu, unsafe_allow_html=True)
