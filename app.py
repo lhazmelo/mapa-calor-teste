@@ -6,6 +6,7 @@ from scipy.interpolate import Rbf
 import folium
 from streamlit_folium import st_folium
 from folium.plugins import HeatMap
+import numpy
 
 st.title("Mapa de Calor Geociências")
 
@@ -44,38 +45,71 @@ else:
 
 
 # 5. DESENHO DO MAPA VISUAL
-st.subheader("🗺️ Visualização do Prédio de Geociências")
+st.subheader("Visualização Espacial")
 
-#CENTRALIZAÇÃO DO MAPA
-mapa = folium.Map(location=[-22.7694, -43.6875], zoom_start=18)
+# Cria duas abas separadas na tela
+aba1, aba2 = st.tabs(["📍 Mapa de Posição (Arraste os Sliders)", "🌡️ Mapa de Calor Interpolado"])
 
-dados_heatmap = []
-
-#MARCADOR VERMELHO PARA CADA SENSOR
-for index, linha in df_sensores.iterrows():
-    lat = linha['latitude']
-    lon = linha['longitude']
-    temp = linha['temperatura']
+# --- ABA 1: MAPA DO USUÁRIO ---
+with aba1:
+    st.write("Aqui você vê a sua posição exata no campus baseada nos sliders.")
+    mapa_posicao = folium.Map(location=[-22.7694, -43.6875], zoom_start=18)
     
-    folium.Marker(
-        location=[lat, lon],
-        popup=f"Sensor {linha['sensor_id']}: {temp}°C",
-        icon=folium.Icon(color="red", icon="fire"),
-    ).add_to(mapa)
+    # Marca os 4 sensores com pontinhos vermelhos
+    for index, linha in df_sensores.iterrows():
+        folium.CircleMarker(
+            location=[linha['latitude'], linha['longitude']],
+            radius=5, color="red", fill=True, tooltip=f"Sensor {linha['sensor_id']}: {linha['temperatura']}°C"
+        ).add_to(mapa_posicao)
+
+    # Marca o usuário se ele estiver no polígono
+    if poligono_geo.contains(ponto_usuario):
+        folium.Marker(
+            location=[lat_usuario, lon_usuario],
+            popup=f"Sua Temp: {temp_estimada:.1f}°C",
+            icon=folium.Icon(color="blue", icon="user"),
+        ).add_to(mapa_posicao)
+
     
-    #CRIA UM PESO TÉRMICO
-    dados_heatmap.append([lat, lon, temp])
+    st_folium(mapa_posicao, height=400, use_container_width=True)
 
-#CAMADA DE CORES
-HeatMap(dados_heatmap, radius=40, blur=25, max_zoom=1).add_to(mapa)
+# ABA 2: O MAPA DE CALOR (INTERPOLADO)
+with aba2:
+    st.write("Superfície contínua de temperatura calculada pelo SciPy.")
+    mapa_calor = folium.Map(location=[-22.7694, -43.6875], zoom_start=18)
 
-#MOSTRA ONDE O ALUNO ESTÁ NO MAPA
-if poligono_geo.contains(ponto_usuario):
-    folium.Marker(
-        location=[lat_usuario, lon_usuario],
-        popup="Você está aqui",
-        icon=folium.Icon(color="blue", icon="user"),
-    ).add_to(mapa)
+    # 1. Pegamos os limites da nossa área
+    min_lon, max_lon = -43.6882, -43.6868
+    min_lat, max_lat = -22.7700, -22.7688
 
-#JOGA O MAPA NA TELA
-st_folium(mapa, width=700, height=500)
+    # 2. NumPy cria uma rede (grid) de 50x50 pontos invisíveis cobrindo a área
+    grade_lon, grade_lat = np.meshgrid(
+        np.linspace(min_lon, max_lon, 50),
+        np.linspace(min_lat, max_lat, 50)
+    )
+    
+    # Achata a grade para o formato que o SciPy gosta
+    lon_achapada = grade_lon.flatten()
+    lat_achapada = grade_lat.flatten()
+
+    # 3. O SciPy calcula a temperatura de TODOS esses 2500 pontos invisíveis de uma vez!
+    temp_achapada = funcao_calor(lon_achapada, lat_achapada)
+
+    # 4. Filtramos só os pontos que caem dentro do terreno e preparamos pro Folium
+    dados_grade = []
+    for ln, lt, tp in zip(lon_achapada, lat_achapada, temp_achapada):
+        if poligono_geo.contains(Point(ln, lt)):
+            dados_grade.append([lt, ln, tp]) # Folium usa Lat, Lon
+
+    #Mapa de calor
+    from folium.plugins import HeatMap
+    HeatMap(dados_grade, radius=15, blur=10, min_opacity=0.4).add_to(mapa_calor)
+
+    # Marca os 4 sensores originais por cima da mancha
+    for index, linha in df_sensores.iterrows():
+        folium.Marker(
+            location=[linha['latitude'], linha['longitude']],
+            icon=folium.Icon(color="black", icon="info-sign"),
+        ).add_to(mapa_calor)
+
+    st_folium(mapa_calor, height=400, use_container_width=True)
