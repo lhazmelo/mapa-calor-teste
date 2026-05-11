@@ -7,7 +7,7 @@ import folium
 from streamlit_folium import st_folium
 from folium.plugins import HeatMap
 
-st.title("🌡️ Mapa de Calor Geociências - Nuvem")
+st.title("Mapa de Calor Geociências")
 
 # 1. CONECTA NO SUPABASE
 @st.cache_data(ttl=10) # Atualiza a cada 10 segundos
