@@ -86,8 +86,8 @@ else:
 
     # Criação da malha com 2500 pontos invisíveis (50x50)
     grade_lon, grade_lat = np.meshgrid(
-        np.linspace(min_lon, max_lon, 50),
-        np.linspace(min_lat, max_lat, 50)
+        np.linspace(min_lon, max_lon, 100),
+        np.linspace(min_lat, max_lat, 100)
     )
     
     lon_achapada = grade_lon.flatten()
