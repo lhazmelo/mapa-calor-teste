@@ -1,165 +1,200 @@
-import streamlit as st
-import pandas as pd
-from sqlalchemy import create_engine
-from shapely.geometry import Point, Polygon
-from scipy.interpolate import Rbf
-import folium
-from streamlit_folium import st_folium
-from folium.plugins import HeatMap
-import numpy as np
-import matplotlib.pyplot as plt
-import io
+"""
+Sistema de Monitoramento e Interpolação Climática - UFRRJ (Geociências)
+Desenvolvido com Streamlit, GeoPandas, SciPy e Folium.
+"""
+
 import base64
+import io
+import logging
+from typing import Tuple
+import folium
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import streamlit as st
+from folium import raster_layers
+from scipy.interpolate import Rbf
+from shapely.geometry import Point, Polygon
+from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
+from streamlit_folium import st_folium
 
-st.title("Mapa de Calor Geociências")
+# ==========================================
+# CONFIGURAÇÕES E CONSTANTES
+# ==========================================
+st.set_page_config(page_title="Monitoramento Geociências", layout="wide")
 
-# 1. CONECTA NO SUPABASE
-@st.cache_data(ttl=10) # Atualiza a cada 10 segundos
-def puxar_dados():
-   
-    engine = create_engine(st.secrets["DB_URL"])
-    query = "SELECT sensor_id, latitude, longitude, temperatura, data_hora FROM medicoes ORDER BY data_hora DESC LIMIT 4"
-    return pd.read_sql_query(query, engine)
+# Delimitação do Prédio de Geociências (UFRRJ)
+COORDENADAS_CAMPUS = [
+    (-43.6882, -22.7688),
+    (-43.6868, -22.7688),
+    (-43.6868, -22.7700),
+    (-43.6882, -22.7700)
+]
+POLIGONO_GEOCIENCIAS = Polygon(COORDENADAS_CAMPUS)
 
-df_sensores = puxar_dados()
+# Parâmetros de Renderização
+MAPA_CENTRO = [-22.7694, -43.6875]
+ZOOM_INICIAL = 18
+RESOLUCAO_MALHA = 100
 
-# 2. CERCA VIRTUAL
-coords_geo = [(-43.6882, -22.7688), (-43.6868, -22.7688), (-43.6868, -22.7700), (-43.6882, -22.7700)]
-poligono_geo = Polygon(coords_geo)
+# ==========================================
+# FUNÇÕES DE PROCESSAMENTO
+# ==========================================
+@st.cache_data(ttl=10)
+def obter_dados_sensores() -> pd.DataFrame:
+    """
+    Estabelece conexão com o banco de dados e recupera as últimas leituras.
+    """
+    try:
+        engine = create_engine(st.secrets["DB_URL"])
+        query = """
+            SELECT sensor_id, latitude, longitude, temperatura, data_hora 
+            FROM medicoes 
+            ORDER BY data_hora DESC 
+            LIMIT 4
+        """
+        return pd.read_sql_query(query, engine)
+    except SQLAlchemyError as e:
+        logging.error(f"Falha na conexão com o banco de dados: {e}")
+        st.error("Serviço temporariamente indisponível. Falha na conexão com o banco de dados.")
+        return pd.DataFrame()
 
-# 3. TESTE DE GPS
-st.write("Mova o slider para simular o aluno andando pelo pátio:")
-lon_usuario = st.slider("Longitude", -43.6890, -43.6860, -43.6875, format="%.5f")
-lat_usuario = st.slider("Latitude", -22.7710, -22.7680, -22.7694, format="%.5f")
-ponto_usuario = Point(lon_usuario, lat_usuario)
+def calcular_interpolacao_rbf(df: pd.DataFrame, fun_type: str = 'cubic') -> Rbf:
+    """
+    Gera o modelo matemático de interpolação espacial com base nos sensores.
+    """
+    return Rbf(
+        df['longitude'].values, 
+        df['latitude'].values, 
+        df['temperatura'].values, 
+        function=fun_type
+    )
 
-# 4. CÁLCULO
-if poligono_geo.contains(ponto_usuario):
-    st.success("Na área! Calculando...")
-    x = df_sensores['longitude'].values
-    y = df_sensores['latitude'].values
-    z = df_sensores['temperatura'].values
-    
-    funcao_calor = Rbf(x, y, z, function='linear')
-    temp_estimada = funcao_calor(lon_usuario, lat_usuario)
-    st.metric(label="Temperatura Estimada", value=f"{temp_estimada:.2f} °C")
-else:
-    st.error("Fora da área de cobertura.")
+def gerar_camada_isolinhas(modelo_rbf: Rbf, limites: Tuple[float, float, float, float]) -> str:
+    """
+    Gera a sobreposição de contornos (isopletas) via Matplotlib e converte para Base64.
+    """
+    min_lon, max_lon, min_lat, max_lat = limites
 
-
-# 5. DESENHO DO MAPA VISUAL
-st.subheader("🗺️ Visualização Espacial")
-
-# Trocamos as "tabs" por "radio" para evitar o bug de mapas em elementos ocultos
-tipo_mapa = st.radio("Escolha a visualização:", ["📍 Mapa de Posição (Sliders)", "🌡️ Mapa de Calor Interpolado"])
-
-if tipo_mapa == "📍 Mapa de Posição (Sliders)":
-    st.write("Aqui você vê a sua posição exata baseada nos sliders.")
-    mapa_posicao = folium.Map(location=[-22.7694, -43.6875], zoom_start=18)
-    
-    # Marca os 4 sensores com pontinhos vermelhos
-    for index, linha in df_sensores.iterrows():
-        folium.CircleMarker(
-            location=[linha['latitude'], linha['longitude']],
-            radius=6, color="red", fill=True, 
-            tooltip=f"Sensor {linha['sensor_id']}: {linha['temperatura']}°C"
-        ).add_to(mapa_posicao)
-
-    # Marca o usuário se ele estiver dentro da área
-    if poligono_geo.contains(ponto_usuario):
-        folium.Marker(
-            location=[lat_usuario, lon_usuario],
-            popup=f"Sua Temp: {temp_estimada:.1f}°C",
-            icon=folium.Icon(color="blue", icon="user"),
-        ).add_to(mapa_posicao)
-
-    # A 'key' única é essencial para o Streamlit não confundir os mapas
-    st_folium(mapa_posicao, height=400, use_container_width=True, key="mapa_pos")
-
-else:
-    st.write("Superfície contínua de temperatura calculada pelo modelo matemático.")
-    mapa_calor = folium.Map(location=[-22.7694, -43.6875], zoom_start=18)
-
-    # Limites do prédio de geociências
-    min_lon, max_lon = -43.6882, -43.6868
-    min_lat, max_lat = -22.7700, -22.7688
-
-    # Criação da malha com 2500 pontos invisíveis (50x50)
+    # Geração da malha espacial
     grade_lon, grade_lat = np.meshgrid(
-        np.linspace(min_lon, max_lon, 100),
-        np.linspace(min_lat, max_lat, 100)
+        np.linspace(min_lon, max_lon, RESOLUCAO_MALHA),
+        np.linspace(min_lat, max_lat, RESOLUCAO_MALHA)
     )
     
-    lon_achapada = grade_lon.flatten()
-    lat_achapada = grade_lat.flatten()
-    temp_achapada = funcao_calor(lon_achapada, lat_achapada)
+    # Aplicação do modelo preditivo
+    temp_matriz = modelo_rbf(grade_lon.flatten(), grade_lat.flatten()).reshape(RESOLUCAO_MALHA, RESOLUCAO_MALHA)
 
-    # 1. Cria uma tela de desenho (canvas) sem bordas e transparente
+    # Renderização científica
     fig, ax = plt.subplots(figsize=(8, 8))
     ax.axis('off') 
     fig.patch.set_alpha(0.0) 
     ax.patch.set_alpha(0.0)
 
-    # 2. Transforma o vetor de temperatura de volta numa matriz 2D
-    # (O Matplotlib exige matrizes para desenhar curvas de nível)
-    temp_matriz = temp_achapada.reshape(100, 100)
+    ax.contourf(grade_lon, grade_lat, temp_matriz, levels=15, cmap='coolwarm', alpha=0.5)
+    ax.contour(grade_lon, grade_lat, temp_matriz, levels=15, colors='black', linewidths=0.5, alpha=0.5)
 
-    # 3. Desenha as faixas de temperatura preenchidas (contourf)
-    # 'coolwarm' vai do azul (frio) pro vermelho (quente). 'levels=15' cria 15 faixas.
-    contorno_cores = ax.contourf(
-        grade_lon, grade_lat, temp_matriz, 
-        levels=15, cmap='coolwarm', alpha=0.5
-    )
-
-    # 4. Desenha as linhas de contorno rígidas (As curvas de nível)
-    ax.contour(
-        grade_lon, grade_lat, temp_matriz, 
-        levels=15, colors='black', linewidths=0.5, alpha=0.5
-    )
-
-    # 5. Remove qualquer margem branca da imagem gerada
     plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
     plt.margins(0, 0)
 
-    # 6. Salva a imagem na memória RAM do servidor (sem criar arquivo)
+    # Processamento em memória
     img_buffer = io.BytesIO()
     plt.savefig(img_buffer, format='png', bbox_inches='tight', pad_inches=0, transparent=True)
     img_buffer.seek(0)
-    
-    # Codifica a imagem para que o navegador de internet consiga ler
     img_base64 = base64.b64encode(img_buffer.read()).decode('utf-8')
-    img_url = f"data:image/png;base64,{img_base64}"
-    plt.close(fig) # Libera a memória do servidor
+    plt.close(fig)
 
-    # ==========================================
-    # SOBREPOSIÇÃO NO FOLIUM
-    # ==========================================
-    from folium import raster_layers
+    return f"data:image/png;base64,{img_base64}"
 
-    # Define os limites perfeitos onde a imagem será colada no mapa
-    limites_imagem = [[min_lat, min_lon], [max_lat, max_lon]]
+# ==========================================
+# INTERFACE PRINCIPAL (MAIN)
+# ==========================================
+def main():
+    st.title("Mapa de Calor")
+    st.markdown("---")
 
-    raster_layers.ImageOverlay(
-        image=img_url,
-        bounds=limites_imagem,
-        opacity=0.7,
-        interactive=False,
-        cross_origin=False,
-        zindex=1
-    ).add_to(mapa_calor)
+    df_sensores = obter_dados_sensores()
+    
+    if df_sensores.empty:
+        st.stop()
 
-    # Marca os 4 sensores reais por cima do mapa científico para referência
-    for index, linha in df_sensores.iterrows():
-        folium.Marker(
-            location=[linha['latitude'], linha['longitude']],
-            icon=folium.Icon(color="black", icon="info-sign"),
-            tooltip=f"Sensor {linha['sensor_id']} (Real)"
-        ).add_to(mapa_calor)
-   # Marca o usuário no mapa de calor se ele estiver na área permitida
-    if poligono_geo.contains(ponto_usuario):
-        folium.Marker(
-            location=[lat_usuario, lon_usuario],
-            popup=f"Sua Posição\nTemp Estimada: {temp_estimada:.1f}°C",
-            icon=folium.Icon(color="blue", icon="user"),
-        ).add_to(mapa_calor)
-    st_folium(mapa_calor, height=400, use_container_width=True, key="mapa_cientifico")
+    # Layout em colunas para os controles
+    col_controle, col_mapa = st.columns([1, 3])
+
+    with col_controle:
+        st.subheader("Simulador de Posicionamento")
+        st.markdown("Ajuste as coordenadas para estimar a temperatura local.")
+        
+        lon_usuario = st.slider("Longitude", -43.6890, -43.6860, -43.6875, format="%.5f")
+        lat_usuario = st.slider("Latitude", -22.7710, -22.7680, -22.7694, format="%.5f")
+        ponto_usuario = Point(lon_usuario, lat_usuario)
+
+        tipo_mapa = st.radio(
+            "Camada de Visualização:", 
+            ["Sensores e Posição Atual", "Superfície Interpolada (Isolinhas)"]
+        )
+
+        st.markdown("---")
+        
+        # Processamento e Validação da Cerca Virtual
+        if POLIGONO_GEOCIENCIAS.contains(ponto_usuario):
+            modelo_rbf = calcular_interpolacao_rbf(df_sensores)
+            temp_estimada = float(modelo_rbf(lon_usuario, lat_usuario))
+            
+            st.success("✅ Coordenada válida (Área Interna)")
+            st.metric(label="Temperatura Estimada", value=f"{temp_estimada:.2f} °C")
+        else:
+            temp_estimada = None
+            st.error("❌ Fora da área de cobertura do projeto.")
+
+    with col_mapa:
+        mapa_base = folium.Map(location=MAPA_CENTRO, zoom_start=ZOOM_INICIAL)
+
+        # Adição dos sensores de referência em ambos os mapas
+        for _, linha in df_sensores.iterrows():
+            folium.CircleMarker(
+                location=[linha['latitude'], linha['longitude']],
+                radius=6, color="#333333", fill=True, fill_color="#ff4444", fill_opacity=1,
+                tooltip=f"Sensor {linha['sensor_id']} | {linha['temperatura']}°C"
+            ).add_to(mapa_base)
+
+        if tipo_mapa == "📍 Sensores e Posição Atual":
+            if temp_estimada is not None:
+                folium.Marker(
+                    location=[lat_usuario, lon_usuario],
+                    popup=folium.Popup(f"<b>Temperatura:</b> {temp_estimada:.1f}°C", max_width=200),
+                    icon=folium.Icon(color="blue", icon="info-sign"),
+                ).add_to(mapa_base)
+            
+            st_folium(mapa_base, height=500, use_container_width=True, key="mapa_posicao")
+
+        else:
+            # Cálculo dos limites geográficos do polígono para a renderização
+            min_lon, max_lon = -43.6882, -43.6868
+            min_lat, max_lat = -22.7700, -22.7688
+            limites_terreno = (min_lon, max_lon, min_lat, max_lat)
+
+            # Geração da camada científica
+            modelo_rbf = calcular_interpolacao_rbf(df_sensores, fun_type='cubic')
+            camada_imagem = gerar_camada_isolinhas(modelo_rbf, limites_terreno)
+
+            raster_layers.ImageOverlay(
+                image=camada_imagem,
+                bounds=[[min_lat, min_lon], [max_lat, max_lon]],
+                opacity=0.6,
+                interactive=False,
+                cross_origin=False,
+                zindex=1
+            ).add_to(mapa_base)
+
+            if temp_estimada is not None:
+                folium.Marker(
+                    location=[lat_usuario, lon_usuario],
+                    icon=folium.Icon(color="blue", icon="info-sign"),
+                ).add_to(mapa_base)
+
+            st_folium(mapa_base, height=500, use_container_width=True, key="mapa_cientifico")
+
+if __name__ == "__main__":
+    main()
