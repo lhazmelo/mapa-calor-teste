@@ -7,6 +7,7 @@ import base64
 import io
 import logging
 from typing import Tuple
+
 import folium
 import matplotlib.pyplot as plt
 import numpy as np
@@ -111,7 +112,7 @@ def gerar_camada_isolinhas(modelo_rbf: Rbf, limites: Tuple[float, float, float, 
 # INTERFACE PRINCIPAL (MAIN)
 # ==========================================
 def main():
-    st.title("Mapa de Calor")
+    st.title("Mapa de Calor - Monitoramento Microclimático")
     st.markdown("---")
 
     df_sensores = obter_dados_sensores()
@@ -132,7 +133,7 @@ def main():
 
         tipo_mapa = st.radio(
             "Camada de Visualização:", 
-            ["Sensores e Posição Atual", "Superfície Interpolada (Isolinhas)"]
+            ["📍 Sensores e Posição Atual", "🌡️ Superfície Interpolada (Isolinhas)"]
         )
 
         st.markdown("---")
@@ -149,9 +150,10 @@ def main():
             st.error("❌ Fora da área de cobertura do projeto.")
 
     with col_mapa:
+        # 1. Cria o mapa base uma única vez
         mapa_base = folium.Map(location=MAPA_CENTRO, zoom_start=ZOOM_INICIAL)
 
-        # Adição dos sensores de referência em ambos os mapas
+        # 2. Adiciona os sensores de referência (Sempre visíveis em ambos os mapas)
         for _, linha in df_sensores.iterrows():
             folium.CircleMarker(
                 location=[linha['latitude'], linha['longitude']],
@@ -159,23 +161,12 @@ def main():
                 tooltip=f"Sensor {linha['sensor_id']} | {linha['temperatura']}°C"
             ).add_to(mapa_base)
 
-        if tipo_mapa == "📍 Sensores e Posição Atual":
-            if temp_estimada is not None:
-                folium.Marker(
-                    location=[lat_usuario, lon_usuario],
-                    popup=folium.Popup(f"<b>Temperatura:</b> {temp_estimada:.1f}°C", max_width=200),
-                    icon=folium.Icon(color="blue", icon="info-sign"),
-                ).add_to(mapa_base)
-            
-            st_folium(mapa_base, height=500, use_container_width=True, key="mapa_posicao")
-
-        else:
-            # Cálculo dos limites geográficos do polígono para a renderização
+        # 3. Adiciona a camada científica apenas se a opção estiver selecionada
+        if tipo_mapa == "🌡️ Superfície Interpolada (Isolinhas)":
             min_lon, max_lon = -43.6882, -43.6868
             min_lat, max_lat = -22.7700, -22.7688
             limites_terreno = (min_lon, max_lon, min_lat, max_lat)
 
-            # Geração da camada científica
             modelo_rbf = calcular_interpolacao_rbf(df_sensores, fun_type='cubic')
             camada_imagem = gerar_camada_isolinhas(modelo_rbf, limites_terreno)
 
@@ -188,13 +179,22 @@ def main():
                 zindex=1
             ).add_to(mapa_base)
 
-            if temp_estimada is not None:
-                folium.Marker(
-                    location=[lat_usuario, lon_usuario],
-                    icon=folium.Icon(color="blue", icon="info-sign"),
-                ).add_to(mapa_base)
+        # 4. Adiciona o marcador do usuário por cima de tudo (Sempre visível se estiver na área)
+        if temp_estimada is not None:
+            folium.Marker(
+                location=[lat_usuario, lon_usuario],
+                popup=folium.Popup(f"<b>Temperatura:</b> {temp_estimada:.1f}°C", max_width=200),
+                icon=folium.Icon(color="blue", icon="info-sign"),
+            ).add_to(mapa_base)
 
-            st_folium(mapa_base, height=500, use_container_width=True, key="mapa_cientifico")
+        # 5. Renderiza usando otimização de performance do Streamlit-Folium
+        st_folium(
+            mapa_base, 
+            height=500, 
+            use_container_width=True, 
+            returned_objects=[], # Impede lentidão ou recarregamentos ao arrastar o mapa
+            key=f"render_{tipo_mapa}" # Força a tela a atualizar perfeitamente ao trocar o botão radio
+        )
 
 if __name__ == "__main__":
     main()
