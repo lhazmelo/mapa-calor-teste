@@ -8,4 +8,4 @@ shapely
 folium
 streamlit-folium
 numpy
-maatplotlib
+matplotlib
