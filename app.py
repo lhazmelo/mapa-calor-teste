@@ -150,7 +150,7 @@ def main():
     # Controles de visualização do Mapa
     tipo_mapa = st.radio(
         "Selecione a Camada de Visualização:", 
-        ["📍 Sensores Base", "🌡️ Superfície Interpolada (Isolinhas)"],
+        ["Mapa Geral", "Mapa de Calor"],
         horizontal=True
     )
 
