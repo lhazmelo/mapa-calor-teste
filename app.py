@@ -61,9 +61,10 @@ def obter_dados_sensores() -> pd.DataFrame:
         st.error("Serviço temporariamente indisponível. Falha na conexão com o banco de dados.")
         return pd.DataFrame()
 
-def calcular_interpolacao_rbf(df: pd.DataFrame, fun_type: str = 'cubic') -> Rbf:
+def calcular_interpolacao_rbf(df: pd.DataFrame, fun_type: str = 'thin_plate') -> Rbf:
     """
     Gera o modelo matemático de interpolação espacial com base nos sensores.
+    Usa 'thin_plate' (Spline de Placa Fina) para evitar distorções térmicas (Overshoot).
     """
     return Rbf(
         df['longitude'].values, 
@@ -71,7 +72,6 @@ def calcular_interpolacao_rbf(df: pd.DataFrame, fun_type: str = 'cubic') -> Rbf:
         df['temperatura'].values, 
         function=fun_type
     )
-
 def gerar_camada_isolinhas(modelo_rbf: Rbf, limites: Tuple[float, float, float, float]) -> str:
     """
     Gera a sobreposição de contornos (isopletas) via Matplotlib e converte para Base64.
