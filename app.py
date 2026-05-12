@@ -135,7 +135,6 @@ def main():
         st.stop()
 
     # --- CAPTURA DE GPS REAL DO USUÁRIO ---
-   st.write("📍 Obtendo sua localização...")
    localizacao_gps = streamlit_geolocation()
 
    # Se o usuário aceitar e o GPS funcionar
