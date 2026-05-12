@@ -27,15 +27,14 @@ st.set_page_config(page_title="Monitoramento Geociências", page_icon="🌍", la
 
 # Delimitação do Prédio de Geociências
 COORDENADAS_CAMPUS = [
-    (-43.6882, -22.7688),
-    (-43.6868, -22.7688),
-    (-43.6868, -22.7700),
-    (-43.6882, -22.7700)
+    (-43.683322, -22.780782),
+    (-43.683864, -22.781685),
+    (-43.682205, -22.782115),
+    (-43.682452, -22.780999)
 ]
 POLIGONO_GEOCIENCIAS = Polygon(COORDENADAS_CAMPUS)
-
 # Parâmetros de Renderização do Mapa
-MAPA_CENTRO = [-22.7694, -43.6875]
+MAPA_CENTRO = [-22.781448, -43.683034] 
 ZOOM_INICIAL = 18
 RESOLUCAO_MALHA = 100
 
@@ -137,8 +136,8 @@ def main():
     localizacao_gps = streamlit_geolocation()
 
     # Define o Centro do Pátio como ponto de partida (Plano B seguro)
-    lat_atual = -22.7694
-    lon_atual = -43.6875
+    lat_atual = -22.781448
+    lon_atual = -43.683034
     titulo_metrica = "Temperatura no Centro da Área de Estudo"
 
     # Verifica se o GPS pegou o sinal do celular/PC
@@ -189,12 +188,12 @@ def main():
 
     # 2. Desenha a superfície de calor se ativada
     if tipo_mapa == "Mapa de Calor":
-        limites_terreno = (-43.6882, -43.6868, -22.7700, -22.7688)
+        limites_terreno = (-43.684000, -43.682000, -22.782500, -22.780500)
         camada_imagem = gerar_camada_isolinhas(df_sensores, limites_terreno)
 
         raster_layers.ImageOverlay(
             image=camada_imagem,
-            bounds=[[-22.7700, -43.6882], [-22.7688, -43.6868]],
+            bounds=[[-22.782500, -43.684000], [-22.780500, -43.682000]],
             opacity=0.6,
             interactive=False,
             cross_origin=False,
