@@ -18,6 +18,7 @@ from shapely.geometry import Point, Polygon
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 from streamlit_folium import st_folium
+from streamlit_geolocation import streamlit_geolocation
 
 # ==========================================
 # CONFIGURAÇÕES E CONSTANTES
@@ -133,12 +134,22 @@ def main():
     if df_sensores.empty:
         st.stop()
 
-    # --- SIMULAÇÃO DE GPS DO USUÁRIO ---
-    # Coordenadas fixas fingindo ser o celular de quem abriu o site
-    lat_atual = -22.7694
-    lon_atual = -43.6875
+    # --- CAPTURA DE GPS REAL DO USUÁRIO ---
+   st.write("📍 Obtendo sua localização...")
+   localizacao_gps = streamlit_geolocation()
+
+   # Se o usuário aceitar e o GPS funcionar
+   if localizacao_gps['latitude'] is not None and localizacao_gps['longitude'] is not None:
+       lat_atual = localizacao_gps['latitude']
+       lon_atual = localizacao_gps['longitude']
+       st.success("Sinal de GPS conectado com sucesso.")
+   else:
+       # Se falhar ou não der permissão, usa o centro do pátio
+       lat_atual = -22.7694
+       lon_atual = -43.6875
+       st.warning("Usando localização padrão (Centro do Pátio). Ative o GPS para precisão.")
     
-    # Calcula a temperatura exata onde o usuário está pisando
+# Calcula a temperatura exata onde o usuário está pisando
     temp_local_exata = estimar_temp_idw(lon_atual, lat_atual, df_sensores)
 
     # Exibe a temperatura local em destaque absoluto
