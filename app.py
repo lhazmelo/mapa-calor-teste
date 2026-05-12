@@ -125,6 +125,7 @@ def main():
     st.title("Monitoramento Microclimático")
     pasta_atual = os.path.dirname(os.path.abspath(__file__))
     caminho_imagem = os.path.join(pasta_atual, "LIGA.png")
+    
     col_esq, col_meio, col_dir = st.columns([1, 1, 1])
     with col_meio:
         st.image(caminho_imagem, width=200)
@@ -135,24 +136,24 @@ def main():
         st.stop()
 
     # --- CAPTURA DE GPS REAL DO USUÁRIO ---
-   localizacao_gps = streamlit_geolocation()
+    st.write("📍 Obtendo sua localização...")
+    localizacao_gps = streamlit_geolocation()
 
-   # Se o usuário aceitar e o GPS funcionar
-   if localizacao_gps['latitude'] is not None and localizacao_gps['longitude'] is not None:
-       lat_atual = localizacao_gps['latitude']
-       lon_atual = localizacao_gps['longitude']
-       st.success("Sinal de GPS conectado com sucesso.")
-   else:
-       # Se falhar ou não der permissão, usa o centro do pátio
-       lat_atual = -22.7694
-       lon_atual = -43.6875
-       st.warning("Usando localização padrão (Centro do Pátio). Ative o GPS para precisão.")
-    
-# Calcula a temperatura exata onde o usuário está pisando
+    # Verifica se o GPS conseguiu pegar o sinal com sucesso
+    if localizacao_gps['latitude'] is not None and localizacao_gps['longitude'] is not None:
+        lat_atual = localizacao_gps['latitude']
+        lon_atual = localizacao_gps['longitude']
+        st.success("Sinal de GPS conectado com sucesso.")
+    else:
+        # Plano B: Se falhar ou não der permissão, joga o boneco para o centro do pátio
+        lat_atual = -22.7694
+        lon_atual = -43.6875
+        st.warning("Usando localização padrão (Centro do Pátio). Ative o GPS para precisão.")
+
+    # Calcula a temperatura exata onde o usuário (ou boneco) está pisando
     temp_local_exata = estimar_temp_idw(lon_atual, lat_atual, df_sensores)
 
-    # Exibe a temperatura local em destaque absoluto
-    st.success("📍 Sua localização foi obtida com sucesso.")
+    # Exibe a temperatura local em destaque
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.metric(
