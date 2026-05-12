@@ -132,36 +132,44 @@ def main():
     st.markdown("Dashboard de interpolação térmica em tempo real da UFRRJ.")
     
     df_sensores = obter_dados_sensores()
-    if df_sensores.empty:
-        st.stop()
-
-    # --- CAPTURA DE GPS REAL DO USUÁRIO ---
+   # --- CAPTURA E VALIDAÇÃO DE GPS ---
     st.write("📍 Obtendo sua localização...")
     localizacao_gps = streamlit_geolocation()
 
-    # Verifica se o GPS conseguiu pegar o sinal com sucesso
-    if localizacao_gps['latitude'] is not None and localizacao_gps['longitude'] is not None:
-        lat_atual = localizacao_gps['latitude']
-        lon_atual = localizacao_gps['longitude']
-        st.success("Sinal de GPS conectado com sucesso.")
-    else:
-        # Plano B: Se falhar ou não der permissão, joga o boneco para o centro do pátio
-        lat_atual = -22.7694
-        lon_atual = -43.6875
-        st.warning("Usando localização padrão (Centro do Pátio). Ative o GPS para precisão.")
+    # Define o Centro do Pátio como ponto de partida (Plano B seguro)
+    lat_atual = -22.7694
+    lon_atual = -43.6875
+    titulo_metrica = "Temperatura no Centro da Área de Estudo"
 
-    # Calcula a temperatura exata onde o usuário (ou boneco) está pisando
+    # Verifica se o GPS pegou o sinal do celular/PC
+    if localizacao_gps['latitude'] is not None and localizacao_gps['longitude'] is not None:
+        # Cria um ponto matemático com a coordenada do usuário
+        ponto_usuario = Point(localizacao_gps['longitude'], localizacao_gps['latitude'])
+        
+        # Testa se a pessoa está pisando dentro do polígono da faculdade
+        if POLIGONO_GEOCIENCIAS.contains(ponto_usuario):
+            lat_atual = localizacao_gps['latitude']
+            lon_atual = localizacao_gps['longitude']
+            titulo_metrica = "Temperatura na sua posição exata"
+            st.success("✅ GPS conectado: Você está dentro da área do projeto.")
+        else:
+            # Usuário está em casa ou no ônibus
+            st.warning("⚠️ Você está fora da área do Prédio de Geociências. Exibindo dados do centro do pátio.")
+    else:
+        # Usuário negou o GPS ou o PC não tem localização
+        st.info("ℹ️ Usando localização padrão. Ative o GPS para precisão local.")
+
+    # Calcula a temperatura com base na decisão acima
     temp_local_exata = estimar_temp_idw(lon_atual, lat_atual, df_sensores)
 
-    # Exibe a temperatura local em destaque
+    # Exibe o painel grandão
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.metric(
-            label="Temperatura na sua posição exata", 
+            label=titulo_metrica, 
             value=f"{temp_local_exata:.2f} °C",
         )
     st.markdown("---")
-
     # Controles de visualização do Mapa
     tipo_mapa = st.radio(
         "Selecione a Camada de Visualização:", 
